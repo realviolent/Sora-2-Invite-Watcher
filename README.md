@@ -7,4 +7,5 @@ ChatGPT helped me to fix this python script, as i had 401 HTTP errors. It works 
 pip install -r requirements.txt
 
 python -m playwright install chromium
+
 python Sora2Get.py
