@@ -1,4 +1,7 @@
-# Sora2 Invite Code Watcher
+<img width="1920" height="1080" alt="ScreenShot" src="https://github.com/user-attachments/assets/bc34a1db-962d-4bc9-9924-fc1675c4949c" />
+
+# Sora2 Invite Co
+de Watcher
 
 Qiitaのコメントから6桁コードを監視し、見つけ次第ビープ＆通知＆クリップボード（任意で前面アプリに ⌘V→Enter）を行うツール。
 
