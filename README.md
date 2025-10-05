@@ -3,7 +3,7 @@
 # Sora2 Invite Code
 de Watcher
 
-Qiitaのコメントから6桁コードを監視し、見つけ次第ビープ＆通知＆クリップボード（任意で前面アプリに ⌘V→Enter）を行うツール。
+Qiitaのコメントから6桁コードを監視し、見つけ次第ビープ＆通知＆クリップボード（任意で前面アプリに ⌘V→Enter）、ペーストしてEnterを行うツール。
 
 ## Quickstart
 pip install -r requirements.txt  # (requests, playwright など)
