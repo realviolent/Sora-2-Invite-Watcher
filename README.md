@@ -7,8 +7,13 @@ Qiitaのコメントから6桁コードを監視し、見つけ次第ビープ�
 
 ## Quickstart
 pip install -r requirements.txt  # (requests, playwright など)
+
 python -m playwright install chromium  # fallbackを使う場合
+
 export QIITA_TOKEN=...           # read_qiita スコープのPAT
+
 export POLL_SECONDS=2
+
 export AUTO_PASTE=1              # 前面アプリに ⌘V→Enterを送る
+
 python Sora2Get.py
