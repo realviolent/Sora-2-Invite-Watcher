@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+.myenv/
+*.egg-info/
+
+# Playwright cache
+**/ms-playwright/
+**/playwright/.cache/
+
+# macOS
+.DS_Store
+
+# State files created by the watcher
+.sora2_state/
+
+# dotenv files (keep only the example)
+.env
