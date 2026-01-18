@@ -13,6 +13,7 @@ import os
 import re
 import time
 import json
+import asyncio
 import signal
 import random
 import argparse
@@ -220,12 +221,10 @@ async def _fetch_with_playwright(url: str) -> Optional[str]:
 def get_latest_code_from_html() -> Optional[str]:
     # wrapper to call async fetch cleanly
     try:
-        import asyncio
         return asyncio.run(_fetch_with_playwright(QIITA_COMMENTS_URL))
     except RuntimeError as e:
         # in rare cases event loop may be running; fallback to creating new loop
-        import asyncio as _asyncio
-        loop = _asyncio.new_event_loop()
+        loop = asyncio.new_event_loop()
         try:
             return loop.run_until_complete(_fetch_with_playwright(QIITA_COMMENTS_URL))
         finally:
@@ -299,7 +298,6 @@ def _sigint(_sig, _frm):
     log("Interrupted. Exiting...")
 
 def main_loop(single_run: bool = False):
-    import math
     signal.signal(signal.SIGINT, _sigint)
 
     if not QIITA_ITEM_ID:
