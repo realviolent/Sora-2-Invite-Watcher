@@ -164,8 +164,7 @@ async def _fetch_with_playwright(url: str) -> Optional[str]:
             await page.goto(url, wait_until="domcontentloaded", timeout=20000)
             try:
                 await page.wait_for_function(
-                    """() => !!Array.from(document.querySelectorAll('*'))
-                             .find(el => /comment/i.test((el.className||'') + ' ' + (el.id||'')))""",
+                    """() => !!document.querySelector('[class*="comment" i], [id*="comment" i]')""",
                     timeout=10000,
                 )
             except PlaywrightTimeoutError:
@@ -183,7 +182,7 @@ async def _fetch_with_playwright(url: str) -> Optional[str]:
                     break
 
             texts = await page.evaluate("""() => {
-                const nodes = Array.from(document.querySelectorAll('*'));
+                const nodes = Array.from(document.querySelectorAll('[class*="comment" i], [id*="comment" i]'));
                 const buckets = [];
                 for (const el of nodes) {
                     const sig = (el.className || '') + ' ' + (el.id || '');
