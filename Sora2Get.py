@@ -17,6 +17,7 @@ import signal
 import random
 import argparse
 import subprocess
+import threading
 from pathlib import Path
 from typing import Optional, List
 
@@ -262,7 +263,7 @@ def paste_and_submit() -> None:
 
     time.sleep(enter_delay / 1000.0)
 
-def notify(code: str) -> None:
+def _notify_payload(code: str) -> None:
     # beep + Notification Center + copy to clipboard; optional auto-paste
     try:
         subprocess.run(["osascript", "-e", "beep 3"], check=False)
@@ -290,6 +291,10 @@ def notify(code: str) -> None:
             paste_and_submit()
     except Exception:
         pass
+
+def notify(code: str) -> None:
+    t = threading.Thread(target=_notify_payload, args=(code,), daemon=True)
+    t.start()
 
 # -------------- Run loop and backoff --------------
 RUNNING = True

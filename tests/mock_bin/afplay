@@ -1,0 +1,3 @@
+#!/bin/bash
+echo "afplay called with $@" >> mock_log.txt
+sleep 1
