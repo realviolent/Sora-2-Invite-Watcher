@@ -1,0 +1,3 @@
+#!/bin/bash
+echo "osascript called with $@" >> mock_log.txt
+sleep 1
