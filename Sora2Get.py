@@ -152,8 +152,56 @@ def playwright_available() -> bool:
     except Exception:
         return False
 
+async def _fetch_using_page(page, url: str) -> Optional[str]:
+    from playwright.async_api import TimeoutError as PlaywrightTimeoutError
+    try:
+        await page.goto(url, wait_until="domcontentloaded", timeout=20000)
+        try:
+            await page.wait_for_function(
+                """() => !!Array.from(document.querySelectorAll('*'))
+                         .find(el => /comment/i.test((el.className||'') + ' ' + (el.id||'')))""",
+                timeout=10000,
+            )
+        except PlaywrightTimeoutError:
+            pass
+
+        # load more a few times
+        for _ in range(MAX_LOAD_MORE):
+            try:
+                btn = await page.query_selector('button:has-text("もっと見る"), button:has-text("Load more"), a:has-text("もっと見る"), a:has-text("Load more")')
+                if not btn:
+                    break
+                await btn.click()
+                await page.wait_for_timeout(600)
+            except Exception:
+                break
+
+        texts = await page.evaluate("""() => {
+            const nodes = Array.from(document.querySelectorAll('*'));
+            const buckets = [];
+            for (const el of nodes) {
+                const sig = (el.className || '') + ' ' + (el.id || '');
+                if (/comment/i.test(sig)) {
+                    const t = (el.innerText || '').trim();
+                    if (t) buckets.push(t);
+                }
+            }
+            if (buckets.length === 0) {
+                const bodyText = (document.body.innerText || '').split('\\n').map(s=>s.trim()).filter(Boolean);
+                return bodyText.slice(-400).reverse();
+            }
+            return buckets.reverse();
+        }""")
+        for t in texts:
+            codes = extract_codes_from_text(t, REQUIRE_MIN_DIGITS)
+            if codes:
+                return codes[0]
+    except Exception as e:
+        log(f"[html] Playwright error: {type(e).__name__}: {e}")
+    return None
+
 async def _fetch_with_playwright(url: str) -> Optional[str]:
-    from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
+    from playwright.async_api import async_playwright
     browser = None
     ctx = None
     try:
@@ -161,47 +209,7 @@ async def _fetch_with_playwright(url: str) -> Optional[str]:
             browser = await p.chromium.launch(headless=True)
             ctx = await browser.new_context()
             page = await ctx.new_page()
-            await page.goto(url, wait_until="domcontentloaded", timeout=20000)
-            try:
-                await page.wait_for_function(
-                    """() => !!Array.from(document.querySelectorAll('*'))
-                             .find(el => /comment/i.test((el.className||'') + ' ' + (el.id||'')))""",
-                    timeout=10000,
-                )
-            except PlaywrightTimeoutError:
-                pass
-
-            # load more a few times
-            for _ in range(MAX_LOAD_MORE):
-                try:
-                    btn = await page.query_selector('button:has-text("もっと見る"), button:has-text("Load more"), a:has-text("もっと見る"), a:has-text("Load more")')
-                    if not btn:
-                        break
-                    await btn.click()
-                    await page.wait_for_timeout(600)
-                except Exception:
-                    break
-
-            texts = await page.evaluate("""() => {
-                const nodes = Array.from(document.querySelectorAll('*'));
-                const buckets = [];
-                for (const el of nodes) {
-                    const sig = (el.className || '') + ' ' + (el.id || '');
-                    if (/comment/i.test(sig)) {
-                        const t = (el.innerText || '').trim();
-                        if (t) buckets.push(t);
-                    }
-                }
-                if (buckets.length === 0) {
-                    const bodyText = (document.body.innerText || '').split('\\n').map(s=>s.trim()).filter(Boolean);
-                    return bodyText.slice(-400).reverse();
-                }
-                return buckets.reverse();
-            }""")
-            for t in texts:
-                codes = extract_codes_from_text(t, REQUIRE_MIN_DIGITS)
-                if codes:
-                    return codes[0]
+            return await _fetch_using_page(page, url)
     except Exception as e:
         log(f"[html] Playwright error: {type(e).__name__}: {e}")
     finally:
@@ -298,8 +306,9 @@ def _sigint(_sig, _frm):
     RUNNING = False
     log("Interrupted. Exiting...")
 
-def main_loop(single_run: bool = False):
+async def main_loop_async(single_run: bool = False):
     import math
+    import asyncio
     signal.signal(signal.SIGINT, _sigint)
 
     if not QIITA_ITEM_ID:
@@ -309,48 +318,76 @@ def main_loop(single_run: bool = False):
     last = read_last_code()
     log(f"Watcher start | poll={POLL_SECONDS}s | min_digits={REQUIRE_MIN_DIGITS} | item_id={QIITA_ITEM_ID} | auth={'yes' if QIITA_TOKEN else 'no'}")
 
-    backoff = POLL_SECONDS
-    while RUNNING:
-        try:
-            latest = None
-            # 1) try API
-            latest = get_latest_code_from_api()
+    has_playwright = playwright_available()
+    playwright_obj = None
+    browser = None
+    context = None
+    page = None
 
-            # 2) fallback to HTML if needed
-            if not latest and playwright_available():
-                latest = get_latest_code_from_html()
+    try:
+        if has_playwright:
+            from playwright.async_api import async_playwright
+            playwright_obj = await async_playwright().start()
+            browser = await playwright_obj.chromium.launch(headless=True)
+            context = await browser.new_context()
+            page = await context.new_page()
 
-            if latest:
-                log(f"Latest on page: {latest}")
-                if latest != last:
-                    log("NEW code detected -> notify & copy (and optional paste)")
-                    notify(latest)
-                    write_last_code(latest)
-                    last = latest
-                    backoff = POLL_SECONDS
+        backoff = POLL_SECONDS
+        while RUNNING:
+            try:
+                latest = None
+                # 1) try API
+                latest = await asyncio.to_thread(get_latest_code_from_api)
+
+                # 2) fallback to HTML if needed
+                if not latest and page:
+                    latest = await _fetch_using_page(page, QIITA_COMMENTS_URL)
+
+                if latest:
+                    log(f"Latest on page: {latest}")
+                    if latest != last:
+                        log("NEW code detected -> notify & copy (and optional paste)")
+                        await asyncio.to_thread(notify, latest)
+                        write_last_code(latest)
+                        last = latest
+                        backoff = POLL_SECONDS
+                    else:
+                        log("Same as last seen. No action.")
                 else:
-                    log("Same as last seen. No action.")
-            else:
-                log("No codes detected (API+HTML).")
+                    log("No codes detected (API+HTML).")
 
-            if single_run:
-                break
-
-            # polite sleep with jitter
-            for _ in range(POLL_SECONDS):
-                if not RUNNING:
+                if single_run:
                     break
-                time.sleep(1)
 
-        except Exception as e:
-            # exponential backoff with jitter
-            jitter = random.uniform(0, 1.0)
-            backoff = min(int(backoff * 2 + jitter), 300)
-            log(f"[loop] {type(e).__name__}: {e} — backing off {backoff}s")
-            time.sleep(backoff)
+                # polite sleep with jitter
+                for _ in range(POLL_SECONDS):
+                    if not RUNNING:
+                        break
+                    await asyncio.sleep(1)
+
+            except Exception as e:
+                # exponential backoff with jitter
+                jitter = random.uniform(0, 1.0)
+                backoff = min(int(backoff * 2 + jitter), 300)
+                log(f"[loop] {type(e).__name__}: {e} — backing off {backoff}s")
+                await asyncio.sleep(backoff)
+    finally:
+        try:
+            if page: await page.close()
+        except Exception: pass
+        try:
+            if context: await context.close()
+        except Exception: pass
+        try:
+            if browser: await browser.close()
+        except Exception: pass
+        try:
+            if playwright_obj: await playwright_obj.stop()
+        except Exception: pass
 
 if __name__ == "__main__":
+    import asyncio
     parser = argparse.ArgumentParser(description="Qiita comment watcher (improved)")
     parser.add_argument("--once", action="store_true", help="Run one poll then exit (for debugging)")
     args = parser.parse_args()
-    main_loop(single_run=args.once)
+    asyncio.run(main_loop_async(single_run=args.once))
